@@ -2,7 +2,7 @@
 
 ## Descrição
 
-Este script permite realizar edições em um arquivo modelo de pedido médico em formato PDF. O script modifica especificamente o nome do paciente e a data do pedido no documento.
+Este script permite realizar edições em um arquivo modelo de pedido médico em formato PDF. O script modifica especificamente o nome do paciente e a data do pedido no documento, utilizando o arquivo modelo "PEDIDO COM ASS.pdf".
 
 ## Funcionalidades
 
@@ -10,10 +10,20 @@ Este script permite realizar edições em um arquivo modelo de pedido médico em
 - Edição da data do pedido no formato DD/MM/2025
 - Preservação do restante do conteúdo do documento PDF original
 
+## Como Funciona
+
+O script usa uma abordagem robusta para editar o PDF:
+
+1. **Localização inteligente de texto**: Identifica a posição exata dos campos "Paciente:" e "Brasília," no documento
+2. **Edição precisa**: Substitui apenas o texto após esses marcadores, mantendo o formato e a aparência originais
+3. **Preservação do conteúdo**: Todo o restante do documento permanece inalterado
+
 ## Requisitos
 
 - Python 3.6 ou superior
-- Bibliotecas necessárias (listadas no arquivo requirements.txt)
+- Bibliotecas necessárias:
+  - PyMuPDF (fitz)
+  - unidecode
 
 ## Instalação
 
@@ -52,7 +62,7 @@ pip install -r requirements.txt
 
 ## Uso
 
-1. Coloque o arquivo PDF modelo na pasta do projeto
+1. Certifique-se de que o arquivo modelo "PEDIDO COM ASS.pdf" esteja na mesma pasta do script
 2. Execute o script:
 
 ```
@@ -60,9 +70,15 @@ python pdf_editor.py
 ```
 
 3. Siga as instruções no terminal:
+
    - Insira o nome do paciente (o script irá formatá-lo para maiúsculas e remover caracteres especiais)
    - Insira a data no formato DD/MM/2025
-4. O arquivo PDF editado será salvo com um novo nome na mesma pasta
+
+4. O arquivo PDF editado será salvo na mesma pasta com o nome "PEDIDO COM ASS*[NOME_PACIENTE]*[DATA].pdf"
+
+## Resolução de Problemas
+
+Se o script não encontrar os campos para edição, um diagnóstico será exibido no terminal mostrando o texto extraído do PDF.
 
 ## Licença
 

@@ -4,8 +4,7 @@
 import os
 import re
 from datetime import datetime
-from PyPDF2 import PdfReader, PdfWriter
-from PyPDF2.generic import DecodedStreamObject, NameObject, createStringObject
+import fitz  # PyMuPDF
 from unidecode import unidecode
 
 def normalize_name(name):
@@ -34,79 +33,104 @@ def validate_date(date_str):
     except ValueError:
         return False
 
-def edit_pdf_text(input_pdf, output_pdf, patient_name, date_str):
+def edit_pdf(input_pdf, output_pdf, patient_name, date_str):
     """
-    Edita o PDF substituindo o nome do paciente e a data
+    Edita o PDF modificando o conteúdo textual
     """
-    reader = PdfReader(input_pdf)
-    writer = PdfWriter()
+    print(f"Processando o arquivo: {input_pdf}")
     
-    # Processar a única página do PDF
-    page = reader.pages[0]
-    contents = page['/Contents'].get_object()
+    # Abre o documento
+    doc = fitz.open(input_pdf)
     
-    # Se o conteúdo for um array, precisamos processar cada item
-    if isinstance(contents, list):
-        for i in range(len(contents)):
-            if isinstance(contents[i], DecodedStreamObject):
-                content_data = contents[i].get_data().decode('utf-8')
-                
-                # Substitui o nome do paciente
-                content_data = re.sub(r'Paciente: [^\n\r]*', f'Paciente: {patient_name}', content_data)
-                
-                # Substitui a data
-                content_data = re.sub(r'Data: [^\n\r]*', f'Data: {date_str}', content_data)
-                
-                # Atualiza o conteúdo
-                contents[i] = DecodedStreamObject()
-                contents[i].set_data(content_data.encode('utf-8'))
+    # Obtém a primeira página
+    page = doc[0]
+    
+    # Cria uma cópia da página para modificação
+    new_doc = fitz.open()
+    new_page = new_doc.new_page(width=page.rect.width, height=page.rect.height)
+    
+    # Copia todo o conteúdo da página original
+    new_page.show_pdf_page(new_page.rect, doc, 0)
+    
+    # Localiza o texto do paciente existente e o substitui
+    # Primeiro procuramos todos os blocos de texto
+    text_blocks = page.get_text("dict")["blocks"]
+    
+    # Para diagnóstico, imprime todos os textos encontrados no documento
+    print("\nTextos encontrados no PDF:")
+    all_text = page.get_text()
+    print(all_text)
+    
+    found_patient = False
+    found_date = False
+    
+    # Tentativa 1: Usando a API de extração e substituição de texto
+    try:
+        # Busca por "Paciente:" seguido por qualquer texto
+        patient_areas = page.search_for("Paciente:")
+        if patient_areas:
+            print(f"Encontrado 'Paciente:' na posição: {patient_areas[0]}")
+            # A área encontrada contém as coordenadas do texto "Paciente:"
+            # Vamos colocar o retângulo logo após isso
+            rect = patient_areas[0]  # [x0, y0, x1, y1]
+            
+            # Estendendo o retângulo para a direita para cobrir o nome existente
+            extended_rect = fitz.Rect(rect.x1, rect.y0, rect.x1 + 400, rect.y1)
+            
+            # Insere um retângulo branco para cobrir o texto antigo
+            new_page.draw_rect(extended_rect, color=fitz.utils.getColor("white"), fill=fitz.utils.getColor("white"))
+            
+            # Insere o novo texto
+            text_point = fitz.Point(rect.x1 + 5, rect.y0 + (rect.y1 - rect.y0) * 0.8)
+            new_page.insert_text(text_point, patient_name, fontname="helv", fontsize=12)
+            
+            found_patient = True
+            
+        # Busca por "Brasília," seguido por qualquer texto
+        date_areas = page.search_for("Brasília,")
+        if date_areas:
+            print(f"Encontrado 'Brasília,' na posição: {date_areas[0]}")
+            rect = date_areas[0]
+            
+            # Estendendo o retângulo para a direita para cobrir a data existente
+            extended_rect = fitz.Rect(rect.x1, rect.y0, rect.x1 + 100, rect.y1)
+            
+            # Insere um retângulo branco para cobrir o texto antigo
+            new_page.draw_rect(extended_rect, color=fitz.utils.getColor("white"), fill=fitz.utils.getColor("white"))
+            
+            # Insere o novo texto
+            text_point = fitz.Point(rect.x1 + 5, rect.y0 + (rect.y1 - rect.y0) * 0.8)
+            new_page.insert_text(text_point, date_str, fontname="helv", fontsize=12)
+            
+            found_date = True
+            
+    except Exception as e:
+        print(f"Erro ao tentar a abordagem de substituição direta: {str(e)}")
+    
+    # Salva o documento modificado
+    new_doc.save(output_pdf)
+    new_doc.close()
+    doc.close()
+    
+    if found_patient and found_date:
+        print("Ambos os campos (paciente e data) foram encontrados e editados com sucesso!")
+    elif found_patient:
+        print("Apenas o campo do paciente foi encontrado e editado.")
+    elif found_date:
+        print("Apenas o campo da data foi encontrado e editado.")
     else:
-        content_data = contents.get_data().decode('utf-8')
+        print("Nenhum dos campos foi encontrado. O arquivo foi salvo sem edições de texto.")
         
-        # Substitui o nome do paciente
-        content_data = re.sub(r'Paciente: [^\n\r]*', f'Paciente: {patient_name}', content_data)
-        
-        # Substitui a data
-        content_data = re.sub(r'Data: [^\n\r]*', f'Data: {date_str}', content_data)
-        
-        # Atualiza o conteúdo
-        new_content = DecodedStreamObject()
-        new_content.set_data(content_data.encode('utf-8'))
-        page[NameObject('/Contents')] = new_content
-    
-    writer.add_page(page)
-    
-    # Salva o PDF modificado
-    with open(output_pdf, 'wb') as out_file:
-        writer.write(out_file)
+    return True
 
 def main():
-    # Verificar se existem arquivos PDF na pasta atual
-    pdf_files = [f for f in os.listdir('.') if f.endswith('.pdf') and f != 'output.pdf']
+    # Nome fixo do arquivo modelo
+    input_pdf = "PEDIDO COM ASS.pdf"
     
-    if not pdf_files:
-        print("Nenhum arquivo PDF encontrado na pasta atual.")
-        print("Por favor, coloque o arquivo modelo de pedido médico na pasta do projeto.")
+    if not os.path.exists(input_pdf):
+        print(f"Arquivo modelo '{input_pdf}' não encontrado na pasta atual.")
+        print("Certifique-se de que o arquivo está na mesma pasta do script.")
         return
-    
-    # Se houver mais de um PDF, permite ao usuário escolher
-    if len(pdf_files) > 1:
-        print("Vários arquivos PDF encontrados. Escolha um pelo número:")
-        for i, file in enumerate(pdf_files, 1):
-            print(f"{i}. {file}")
-        
-        while True:
-            try:
-                choice = int(input("Digite o número do arquivo: "))
-                if 1 <= choice <= len(pdf_files):
-                    input_pdf = pdf_files[choice-1]
-                    break
-                else:
-                    print("Número inválido. Tente novamente.")
-            except ValueError:
-                print("Por favor, digite um número válido.")
-    else:
-        input_pdf = pdf_files[0]
     
     # Obter o nome do paciente
     while True:
@@ -116,7 +140,7 @@ def main():
             formatted_name = normalize_name(patient_name)
             print(f"Nome formatado: {formatted_name}")
             confirmation = input("O nome está correto? (s/n): ").lower()
-            if confirmation == 's' or confirmation == 'sim':
+            if confirmation in ['s', 'sim', 'y', 'yes']:
                 break
         else:
             print("O nome não pode estar vazio.")
@@ -131,15 +155,17 @@ def main():
     
     # Gerar nome do arquivo de saída
     base_name = os.path.splitext(input_pdf)[0]
-    output_pdf = f"{base_name}_editado_{datetime.now().strftime('%Y%m%d%H%M%S')}.pdf"
+    output_pdf = f"{base_name}_{formatted_name}_{date_str.replace('/', '-')}.pdf"
     
     try:
         # Editar o PDF
         print(f"Editando o arquivo {input_pdf}...")
-        edit_pdf_text(input_pdf, output_pdf, formatted_name, date_str)
-        print(f"PDF editado com sucesso! Arquivo salvo como: {output_pdf}")
+        if edit_pdf(input_pdf, output_pdf, formatted_name, date_str):
+            print(f"PDF editado com sucesso! Arquivo salvo como: {output_pdf}")
     except Exception as e:
         print(f"Ocorreu um erro ao editar o PDF: {str(e)}")
+        print("Dica: Verifique se todas as dependências estão instaladas:")
+        print("      pip install PyMuPDF")
 
 if __name__ == "__main__":
     main() 
