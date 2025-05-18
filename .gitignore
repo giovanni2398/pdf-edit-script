@@ -172,3 +172,47 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+
+# Arquivos e diretórios específicos do Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Ambiente virtual
+venv/
+ENV/
+env/
+
+# Arquivos de IDE e editores
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# Arquivos de log
+*.log
+
+# Arquivos PDF (exceto templates específicos)
+# Descomente a linha abaixo se quiser ignorar todos os PDFs
+# *.pdf
+
+# Arquivos gerados pelo script
+*_editado_*.pdf
