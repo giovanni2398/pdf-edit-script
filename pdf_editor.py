@@ -3,15 +3,27 @@
 
 import os
 import re
+import glob
 from datetime import datetime
 import fitz  # PyMuPDF
 from unidecode import unidecode
 
+# Constantes
+YEAR = 2025
+DATE_FORMAT = '%d/%m/%Y'
+PATIENT_MARKER = "Paciente:"
+DATE_MARKER = "Brasília,"
+OUTPUT_DATE_FORMAT = "-%m-%d"  # Formato da data no nome do arquivo
+
 def normalize_name(name):
     """
-    Normaliza o nome do paciente:
-    - Converte para maiúsculas
-    - Remove caracteres especiais/acentos
+    Normaliza o nome do paciente.
+    
+    Args:
+        name (str): Nome original do paciente
+        
+    Returns:
+        str: Nome normalizado (maiúsculas, sem acentos, sem caracteres especiais)
     """
     # Converte para maiúsculas
     name = name.upper()
@@ -24,20 +36,56 @@ def normalize_name(name):
 def validate_date(date_str):
     """
     Valida se a data está no formato DD/MM/2025
+    
+    Args:
+        date_str (str): String contendo a data a ser validada
+        
+    Returns:
+        bool: True se a data for válida, False caso contrário
     """
     try:
-        date_obj = datetime.strptime(date_str, '%d/%m/%Y')
-        if date_obj.year != 2025:
+        date_obj = datetime.strptime(date_str, DATE_FORMAT)
+        if date_obj.year != YEAR:
             return False
         return True
     except ValueError:
         return False
 
+def create_patient_folder(patient_name):
+    """
+    Cria uma pasta para o paciente com seu nome normalizado.
+    
+    Args:
+        patient_name (str): Nome normalizado do paciente
+        
+    Returns:
+        str: Caminho da pasta criada
+    """
+    folder_name = patient_name  # Nome já vem normalizado
+    
+    # Verifica se a pasta já existe
+    if not os.path.exists(folder_name):
+        os.makedirs(folder_name)
+        print(f"Pasta criada: {folder_name}/")
+    else:
+        print(f"ℹ Pasta já existe: {folder_name}/")
+    
+    return folder_name
+
 def edit_pdf(input_pdf, output_pdf, patient_name, date_str):
     """
-    Edita o PDF modificando o conteúdo textual
+    Edita o PDF modificando o conteúdo textual para substituir o nome do paciente e a data.
+    
+    Args:
+        input_pdf (str): Caminho do arquivo PDF original
+        output_pdf (str): Caminho onde o PDF editado será salvo
+        patient_name (str): Nome do paciente (normalizado)
+        date_str (str): Data no formato DD/MM/YYYY
+        
+    Returns:
+        bool: True se a edição foi bem-sucedida
     """
-    print(f"Processando o arquivo: {input_pdf}")
+    print(f"Processando: {os.path.basename(input_pdf)}")
     
     # Abre o documento
     doc = fitz.open(input_pdf)
@@ -52,26 +100,14 @@ def edit_pdf(input_pdf, output_pdf, patient_name, date_str):
     # Copia todo o conteúdo da página original
     new_page.show_pdf_page(new_page.rect, doc, 0)
     
-    # Localiza o texto do paciente existente e o substitui
-    # Primeiro procuramos todos os blocos de texto
-    text_blocks = page.get_text("dict")["blocks"]
-    
-    # Para diagnóstico, imprime todos os textos encontrados no documento
-    print("\nTextos encontrados no PDF:")
-    all_text = page.get_text()
-    print(all_text)
-    
     found_patient = False
     found_date = False
     
-    # Tentativa 1: Usando a API de extração e substituição de texto
+    # Tenta encontrar e substituir "Paciente:" e "Brasília,"
     try:
-        # Busca por "Paciente:" seguido por qualquer texto
-        patient_areas = page.search_for("Paciente:")
+        # 1. Busca e substitui o nome do paciente
+        patient_areas = page.search_for(PATIENT_MARKER)
         if patient_areas:
-            print(f"Encontrado 'Paciente:' na posição: {patient_areas[0]}")
-            # A área encontrada contém as coordenadas do texto "Paciente:"
-            # Vamos colocar o retângulo logo após isso
             rect = patient_areas[0]  # [x0, y0, x1, y1]
             
             # Estendendo o retângulo para a direita para cobrir o nome existente
@@ -86,10 +122,9 @@ def edit_pdf(input_pdf, output_pdf, patient_name, date_str):
             
             found_patient = True
             
-        # Busca por "Brasília," seguido por qualquer texto
-        date_areas = page.search_for("Brasília,")
+        # 2. Busca e substitui a data
+        date_areas = page.search_for(DATE_MARKER)
         if date_areas:
-            print(f"Encontrado 'Brasília,' na posição: {date_areas[0]}")
             rect = date_areas[0]
             
             # Estendendo o retângulo para a direita para cobrir a data existente
@@ -105,67 +140,121 @@ def edit_pdf(input_pdf, output_pdf, patient_name, date_str):
             found_date = True
             
     except Exception as e:
-        print(f"Erro ao tentar a abordagem de substituição direta: {str(e)}")
+        print(f"Erro ao tentar a substituição direta: {str(e)}")
     
     # Salva o documento modificado
     new_doc.save(output_pdf)
     new_doc.close()
     doc.close()
     
+    # Reporta o resultado
     if found_patient and found_date:
-        print("Ambos os campos (paciente e data) foram encontrados e editados com sucesso!")
+        print(f"✓ Arquivo editado com sucesso: {os.path.basename(output_pdf)}")
     elif found_patient:
-        print("Apenas o campo do paciente foi encontrado e editado.")
+        print(f"⚠ Apenas o campo do paciente foi editado: {os.path.basename(output_pdf)}")
     elif found_date:
-        print("Apenas o campo da data foi encontrado e editado.")
+        print(f"⚠ Apenas o campo da data foi editado: {os.path.basename(output_pdf)}")
     else:
-        print("Nenhum dos campos foi encontrado. O arquivo foi salvo sem edições de texto.")
+        print(f"⚠ Nenhum campo foi editado: {os.path.basename(output_pdf)}")
         
     return True
 
-def main():
-    # Nome fixo do arquivo modelo
-    input_pdf = "PEDIDO COM ASS.pdf"
+def process_all_pdf_models(patient_name, date_str):
+    """
+    Processa todos os modelos de PDF disponíveis para um paciente.
     
-    if not os.path.exists(input_pdf):
-        print(f"Arquivo modelo '{input_pdf}' não encontrado na pasta atual.")
-        print("Certifique-se de que o arquivo está na mesma pasta do script.")
-        return
+    Args:
+        patient_name (str): Nome normalizado do paciente
+        date_str (str): Data no formato DD/MM/YYYY
+        
+    Returns:
+        bool: True se pelo menos um modelo foi processado com sucesso
+    """
+    # Criar pasta para o paciente
+    patient_folder = create_patient_folder(patient_name)
     
-    # Obter o nome do paciente
+    # Obter todos os arquivos modelo (arquivos PDF que não contém o nome do paciente)
+    pdf_models = [f for f in glob.glob("*.pdf") if not re.search(r'_[A-Z0-9 ]+_', f)]
+    
+    if not pdf_models:
+        print("Nenhum modelo de PDF encontrado na pasta atual.")
+        return False
+    
+    print(f"\nProcessando {len(pdf_models)} modelo(s) de PDF para o paciente {patient_name}:")
+    
+    success_count = 0
+    
+    # Processa cada modelo
+    for model_pdf in pdf_models:
+        base_name = os.path.splitext(model_pdf)[0]
+        output_pdf = os.path.join(patient_folder, f"{base_name}_{date_str.replace('/', '-')}.pdf")
+        
+        try:
+            # Editar o PDF
+            print(f"\nEditando o modelo: {model_pdf}")
+            if edit_pdf(model_pdf, output_pdf, patient_name, date_str):
+                success_count += 1
+        except Exception as e:
+            print(f"❌ Erro ao processar {model_pdf}: {str(e)}")
+    
+    print(f"\nResumo: {success_count} de {len(pdf_models)} arquivos processados com sucesso.")
+    print(f"Os arquivos editados estão na pasta: {patient_folder}/")
+    
+    return success_count > 0
+
+def get_patient_name():
+    """
+    Solicita e normaliza o nome do paciente através da interface de linha de comando.
+    
+    Returns:
+        str: Nome normalizado do paciente
+    """
     while True:
-        patient_name = input("Digite o nome do paciente: ")
+        patient_name = input("\nDigite o nome do paciente: ")
         if patient_name.strip():
             # Normaliza o nome (maiúsculas, sem caracteres especiais)
             formatted_name = normalize_name(patient_name)
             print(f"Nome formatado: {formatted_name}")
             confirmation = input("O nome está correto? (s/n): ").lower()
             if confirmation in ['s', 'sim', 'y', 'yes']:
-                break
+                return formatted_name
         else:
-            print("O nome não pode estar vazio.")
+            print("❌ O nome não pode estar vazio.")
+
+def get_date():
+    """
+    Solicita e valida a data através da interface de linha de comando.
     
-    # Obter a data
+    Returns:
+        str: Data validada no formato DD/MM/YYYY
+    """
     while True:
-        date_str = input("Digite a data do pedido (DD/MM/2025): ")
+        date_str = input(f"\nDigite a data do pedido (DD/MM/{YEAR}): ")
         if validate_date(date_str):
-            break
+            return date_str
         else:
-            print("Data inválida. Use o formato DD/MM/2025 e certifique-se que o ano seja 2025.")
-    
-    # Gerar nome do arquivo de saída
-    base_name = os.path.splitext(input_pdf)[0]
-    output_pdf = f"{base_name}_{formatted_name}_{date_str.replace('/', '-')}.pdf"
+            print(f"❌ Data inválida. Use o formato DD/MM/{YEAR}.")
+
+def main():
+    """Função principal que coordena o fluxo do programa."""
+    print("=" * 70)
+    print(f"{'EDITOR DE PEDIDOS MÉDICOS - AUTOMAÇÃO DE DOCUMENTOS':^70}")
+    print("=" * 70)
     
     try:
-        # Editar o PDF
-        print(f"Editando o arquivo {input_pdf}...")
-        if edit_pdf(input_pdf, output_pdf, formatted_name, date_str):
-            print(f"PDF editado com sucesso! Arquivo salvo como: {output_pdf}")
+        # 1. Obter informações do paciente
+        patient_name = get_patient_name()
+        date_str = get_date()
+        
+        # 2. Processar todos os PDFs
+        process_all_pdf_models(patient_name, date_str)
+        
+    except KeyboardInterrupt:
+        print("\n\n⚠ Operação cancelada pelo usuário.")
     except Exception as e:
-        print(f"Ocorreu um erro ao editar o PDF: {str(e)}")
+        print(f"\nOcorreu um erro durante o processamento: {str(e)}")
         print("Dica: Verifique se todas as dependências estão instaladas:")
-        print("      pip install PyMuPDF")
+        print("      pip install PyMuPDF unidecode")
 
 if __name__ == "__main__":
     main() 
