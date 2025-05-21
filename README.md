@@ -8,7 +8,7 @@ Este script automatiza a edição de arquivos modelo de pedidos médicos em form
 
 - Edição do nome do paciente (convertendo para caixa alta e removendo caracteres especiais)
 - Edição da data do pedido no formato DD/MM/2025
-- Criação automática de pasta para cada paciente
+- Escolha personalizada da pasta para salvar os arquivos
 - Processamento em lote de múltiplos modelos de PDF
 - Preservação do formato e aparência original dos documentos
 
@@ -17,10 +17,10 @@ Este script automatiza a edição de arquivos modelo de pedidos médicos em form
 O script implementa um fluxo de trabalho completo:
 
 1. **Captura de dados**: Solicita o nome do paciente e a data do pedido
-2. **Criação de pasta**: Gera automaticamente uma pasta com o nome do paciente
+2. **Escolha da pasta**: Permite selecionar ou criar uma pasta para os documentos editados
 3. **Localização de modelos**: Identifica todos os PDFs modelo disponíveis no diretório
 4. **Edição inteligente**: Substitui precisamente o nome do paciente e a data em cada modelo
-5. **Organização**: Salva os arquivos editados na pasta do paciente
+5. **Organização**: Salva os arquivos editados na pasta escolhida
 
 ## Recursos Técnicos
 
@@ -85,9 +85,10 @@ python pdf_editor.py
 
    - Digite o nome do paciente (será formatado automaticamente)
    - Digite a data no formato DD/MM/2025
+   - Escolha a pasta para salvar os arquivos (por padrão, usa o nome do paciente)
 
 4. O script criará:
-   - Uma pasta com o nome do paciente
+   - A pasta especificada (se não existir)
    - Cópias editadas de todos os PDFs modelo nessa pasta
 
 ## Personalização

@@ -51,24 +51,22 @@ def validate_date(date_str):
     except ValueError:
         return False
 
-def create_patient_folder(patient_name):
+def create_folder(folder_name):
     """
-    Cria uma pasta para o paciente com seu nome normalizado.
+    Cria uma pasta com o nome especificado ou usa uma existente.
     
     Args:
-        patient_name (str): Nome normalizado do paciente
+        folder_name (str): Nome da pasta a ser criada ou usada
         
     Returns:
-        str: Caminho da pasta criada
+        str: Caminho da pasta
     """
-    folder_name = patient_name  # Nome já vem normalizado
-    
     # Verifica se a pasta já existe
     if not os.path.exists(folder_name):
         os.makedirs(folder_name)
         print(f"Pasta criada: {folder_name}/")
     else:
-        print(f"ℹ Pasta já existe: {folder_name}/")
+        print(f"Pasta já existe: {folder_name}/")
     
     return folder_name
 
@@ -159,19 +157,20 @@ def edit_pdf(input_pdf, output_pdf, patient_name, date_str):
         
     return True
 
-def process_all_pdf_models(patient_name, date_str):
+def process_all_pdf_models(patient_name, date_str, folder_name):
     """
     Processa todos os modelos de PDF disponíveis para um paciente.
     
     Args:
         patient_name (str): Nome normalizado do paciente
         date_str (str): Data no formato DD/MM/YYYY
+        folder_name (str): Nome da pasta onde salvar os arquivos editados
         
     Returns:
         bool: True se pelo menos um modelo foi processado com sucesso
     """
-    # Criar pasta para o paciente
-    patient_folder = create_patient_folder(patient_name)
+    # Criar/usar a pasta especificada
+    folder_path = create_folder(folder_name)
     
     # Obter todos os arquivos modelo (arquivos PDF que não contém o nome do paciente)
     pdf_models = [f for f in glob.glob("*.pdf") if not re.search(r'_[A-Z0-9 ]+_', f)]
@@ -187,7 +186,7 @@ def process_all_pdf_models(patient_name, date_str):
     # Processa cada modelo
     for model_pdf in pdf_models:
         base_name = os.path.splitext(model_pdf)[0]
-        output_pdf = os.path.join(patient_folder, f"{base_name}_{date_str.replace('/', '-')}.pdf")
+        output_pdf = os.path.join(folder_path, f"{base_name}_{date_str.replace('/', '-')}.pdf")
         
         try:
             # Editar o PDF
@@ -198,7 +197,7 @@ def process_all_pdf_models(patient_name, date_str):
             print(f"❌ Erro ao processar {model_pdf}: {str(e)}")
     
     print(f"\nResumo: {success_count} de {len(pdf_models)} arquivos processados com sucesso.")
-    print(f"Os arquivos editados estão na pasta: {patient_folder}/")
+    print(f"Os arquivos editados estão na pasta: {folder_path}/")
     
     return success_count > 0
 
@@ -235,6 +234,35 @@ def get_date():
         else:
             print(f"❌ Data inválida. Use o formato DD/MM/{YEAR}.")
 
+def get_folder_name(patient_name):
+    """
+    Solicita o nome da pasta onde os arquivos serão salvos.
+    Oferece o nome do paciente como padrão, mas permite personalizar.
+    
+    Args:
+        patient_name (str): Nome normalizado do paciente para sugerir como padrão
+        
+    Returns:
+        str: Nome normalizado da pasta escolhida
+    """
+    print(f"\nPasta padrão sugerida: {patient_name}")
+    use_default = input("Usar esta pasta? (s/n): ").lower()
+    
+    if use_default in ['s', 'sim', 'y', 'yes']:
+        return patient_name
+    
+    while True:
+        folder_name = input("Digite o nome da pasta para salvar os arquivos: ")
+        if folder_name.strip():
+            # Normaliza o nome da pasta
+            normalized_folder = normalize_name(folder_name)
+            print(f"Nome da pasta: {normalized_folder}/")
+            confirmation = input("O nome da pasta está correto? (s/n): ").lower()
+            if confirmation in ['s', 'sim', 'y', 'yes']:
+                return normalized_folder
+        else:
+            print("❌ O nome da pasta não pode estar vazio.")
+
 def main():
     """Função principal que coordena o fluxo do programa."""
     print("=" * 70)
@@ -246,8 +274,11 @@ def main():
         patient_name = get_patient_name()
         date_str = get_date()
         
-        # 2. Processar todos os PDFs
-        process_all_pdf_models(patient_name, date_str)
+        # 2. Solicitar nome da pasta onde salvar os arquivos
+        folder_name = get_folder_name(patient_name)
+        
+        # 3. Processar todos os PDFs
+        process_all_pdf_models(patient_name, date_str, folder_name)
         
     except KeyboardInterrupt:
         print("\n\n⚠ Operação cancelada pelo usuário.")
